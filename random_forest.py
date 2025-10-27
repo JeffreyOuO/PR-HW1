@@ -20,7 +20,6 @@ from sklearn.base import clone
 from ucimlrepo import fetch_ucirepo
 
 # ---------- 1) Preprocess ----------
-# 樹模型不需要對數值特徵做標準化；保留數值原樣 + 類別做 One-Hot
 def make_preprocess(X: pd.DataFrame) -> Tuple[ColumnTransformer, List[str], List[str]]:
     num_cols = X.select_dtypes(include="number").columns.tolist()
     cat_cols = X.select_dtypes(exclude="number").columns.tolist()
@@ -46,14 +45,16 @@ def make_pipeline(preprocess: ColumnTransformer) -> Pipeline:
         ("clf", make_rf_base()),
     ])
 
-# ---------- 4) Grid (balanced_accuracy in CV, same spirit as LR/MLP) ----------
+# ---------- 4) grid search parameter----------
 def make_param_grid() -> List[Dict[str, Any]]:
     return [{
         "clf__n_estimators": [300, 600],
-        "clf__max_depth": [None, 20, 40],
-        "clf__min_samples_leaf": [1, 2],
-        "clf__max_features": ["sqrt"],      # 經驗上對分類較穩
-        "clf__class_weight": ["balanced"],  # 類別不平衡時更穩定
+        "clf__max_depth": [None,5,10, 15],
+        "clf__min_samples_leaf": [2, 4,6],
+        "clf__min_samples_split": [2, 5, 10],
+        "clf__max_samples": [0.5, 0.7, 0.9],  
+        "clf__max_features": ["sqrt"],      
+        "clf__class_weight": ["balanced"],  
     }]
 
 # ---------- 5) Tune with CV ----------
@@ -79,18 +80,18 @@ def tune_with_cv(
     grid.fit(X_train, y_train)
     return grid.best_estimator_, grid
 
-# ---------- 6) Plot: Confusion Matrix ----------
+# ---------- 6) Plot Confusion Matrix ----------
 def plot_confusion_matrix(model, X_test, y_test):
     y_pred = model.predict(X_test)
     labels = np.unique(y_test)
     cm = confusion_matrix(y_test, y_pred, labels=labels)
     disp = ConfusionMatrixDisplay(cm, display_labels=labels)
     disp.plot(cmap="Blues", xticks_rotation=45)
-    plt.title("Confusion Matrix (Best RF)")
+    plt.title("Confusion Matrix (Random Forest)")
     plt.tight_layout()
     plt.show()
 
-# ---------- 7) Plot: Learning Curve ----------
+# ---------- 7) Plot Learning Curve ----------
 def plot_learning_curve(estimator, X_train, y_train, scoring="balanced_accuracy"):
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     train_sizes = np.linspace(0.1, 1.0, 8)
@@ -112,20 +113,18 @@ def plot_learning_curve(estimator, X_train, y_train, scoring="balanced_accuracy"
     plt.fill_between(sizes, valid_mean - valid_std, valid_mean + valid_std, alpha=0.2)
     plt.xlabel("Training examples")
     plt.ylabel(scoring)
-    plt.title("Learning Curve (RF)")
+    plt.title("Learning Curve (Random Forest)")
     plt.legend()
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
     plt.show()
 
-# ---------- 8) Plot: ROC (2-class only) ----------
+# ---------- 8) Plot: ROC  ----------
 def plot_roc_if_binary(model, X_test, y_test):
-    # 非二分類就跳過
     if len(np.unique(y_test)) != 2:
         print("[Info] Dataset is not binary. ROC skipped.")
         return
     y_test_bin = label_binarize(y_test, classes=np.unique(y_test)).ravel()
-    # RF 支援 predict_proba
     y_score = model.predict_proba(X_test)[:, 1]
     fpr, tpr, _ = roc_curve(y_test_bin, y_score)
     auc_value = auc(fpr, tpr)
@@ -135,21 +134,20 @@ def plot_roc_if_binary(model, X_test, y_test):
     plt.plot([0, 1], [0, 1], linestyle="--")
     plt.xlabel("False Positive Rate")
     plt.ylabel("True Positive Rate")
-    plt.title("ROC Curve (2-class only, RF)")
+    plt.title("ROC Curve (Random Forest)")
     plt.legend(loc="lower right")
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
     plt.show()
 
-# ===== Data load (general naming, same as LR/MLP style) =====
-# 範例：Dataset 1（可改成你要的 1~4 任一資料集 ID）
-dataset = fetch_ucirepo(id=891)  # Predict Students' Dropout and Academic Success
+# 1) fetch data
+dataset = fetch_ucirepo(id=697)  # Predict Students' Dropout and Academic Success
+# dataset 1 id=697
 
-# Separate features & target
+
+# 2) separate features and  targets
 X = dataset.data.features
 y = dataset.data.targets
-
-# ------ Clean target NaN (must do before stratified split) ------
 y = y.squeeze("columns") if hasattr(y, "columns") else pd.Series(y)
 mask = y.notna()
 if mask.sum() < len(y):
@@ -157,12 +155,11 @@ if mask.sum() < len(y):
 X = X.loc[mask].reset_index(drop=True)
 y = y.loc[mask].reset_index(drop=True)
 
-# ------ Train/test split (stratified) ------
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, stratify=y, random_state=42
 )
 
-# ------ Build, tune, evaluate ------
+# 3)construct pipeline and tune parameters
 preprocess, _, _ = make_preprocess(X)
 pipe = make_pipeline(preprocess)
 best_model, grid = tune_with_cv(pipe, X_train, y_train)
@@ -173,7 +170,7 @@ print("[GridSearch] Best CV balanced accuracy: {:.3f}".format(grid.best_score_))
 y_pred = best_model.predict(X_test)
 print("\nClassification Report (Test):\n", classification_report(y_test, y_pred))
 
-# ------ Plots: keep same order as LR/MLP ------
+# 4) result
 plot_confusion_matrix(best_model, X_test, y_test)
 plot_learning_curve(best_model, X_train, y_train)
 plot_roc_if_binary(best_model, X_test, y_test)

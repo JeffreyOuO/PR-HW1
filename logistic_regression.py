@@ -89,7 +89,7 @@ def plot_confusion_matrix(model, X_test, y_test):
     disp = ConfusionMatrixDisplay(cm, display_labels=labels)
     disp.plot(cmap="Blues", xticks_rotation=45)
 
-    plt.title("Confusion Matrix ")
+    plt.title("Confusion Matrix (Logistic Regression) ")
     plt.tight_layout()
     plt.show()
 
@@ -126,7 +126,7 @@ def plot_learning_curve(estimator, X_train, y_train, scoring="balanced_accuracy"
     plt.fill_between(train_sizes_abs, valid_mean - valid_std, valid_mean + valid_std, alpha=0.2)
     plt.xlabel("Training examples")
     plt.ylabel(scoring)
-    plt.title("Learning Curve")
+    plt.title("Learning Curve (Logistic Regression)")
     plt.legend()
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
@@ -150,7 +150,7 @@ def plot_roc(model, X_test, y_test):
     plt.plot([0, 1], [0, 1], linestyle="--")
     plt.xlabel("False Positive Rate")
     plt.ylabel("True Positive Rate")
-    plt.title("ROC Curve (2-class only)")
+    plt.title("ROC Curve (Logistic Regression)")
     plt.legend(loc="lower right")
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
@@ -158,10 +158,12 @@ def plot_roc(model, X_test, y_test):
 
 from ucimlrepo import fetch_ucirepo
 
-# fetch data
-dataset = fetch_ucirepo(id=891)
+# 1) fetch data
+dataset = fetch_ucirepo(id=697)
+# dataset 1 id=697
+# dataset 2 id=109
 
-# separate features and  targets
+# 2) separate features and  targets
 X = dataset.data.features
 y = dataset.data.targets
 y = y.squeeze("columns") if hasattr(y, "columns") else pd.Series(y)
@@ -185,9 +187,12 @@ print("\n[GridSearch] Best params:", grid.best_params_)
 print("[GridSearch] Best CV balanced accuracy: {:.3f}".format(grid.best_score_))
 
 # 4) result
+
+
 y_pred = best_model.predict(X_test)
 print("\nClassification Report (Test):\n", classification_report(y_test, y_pred))
 
 plot_confusion_matrix(best_model, X_test, y_test)
 plot_learning_curve(best_model, X_train, y_train)
 plot_roc(best_model, X_test, y_test)
+

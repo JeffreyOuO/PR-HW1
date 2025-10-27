@@ -51,14 +51,15 @@ def make_pipeline(preprocess: ColumnTransformer) -> Pipeline:
         ("clf", make_mlp_base()),
     ])
 
-# ---------- 4) Grid (balanced_accuracy in CV, same spirit as LR) ----------
+# ---------- 4)grid search parameter ----------
 def make_param_grid() -> List[Dict[str, Any]]:
     return [
         {
             "clf__hidden_layer_sizes": [(64,), (128, 64)],
+            "clf__activation": ["relu", "tanh"],
             "clf__alpha": [1e-5, 1e-4, 1e-3],
-            "clf__learning_rate_init": [3e-4, 1e-3, 3e-3],
-            "clf__batch_size": [64, 128, 256],
+            "clf__learning_rate_init": [ 1e-3],
+            "clf__batch_size": [64, 128],
         }
     ]
 
@@ -85,18 +86,18 @@ def tune_with_cv(
     grid.fit(X_train, y_train)
     return grid.best_estimator_, grid
 
-# ---------- 6) Plot: Confusion Matrix ----------
+# ---------- 6) Plot Confusion Matrix ----------
 def plot_confusion_matrix(model, X_test, y_test):
     y_pred = model.predict(X_test)
     labels = np.unique(y_test)
     cm = confusion_matrix(y_test, y_pred, labels=labels)
     disp = ConfusionMatrixDisplay(cm, display_labels=labels)
     disp.plot(cmap="Blues", xticks_rotation=45)
-    plt.title("Confusion Matrix")
+    plt.title("Confusion Matrix (MLP)")
     plt.tight_layout()
     plt.show()
 
-# ---------- 7) Plot: Learning Curve ----------
+# ---------- 7) Plot Learning Curve ----------
 def plot_learning_curve(estimator, X_train, y_train, scoring="balanced_accuracy"):
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     train_sizes = np.linspace(0.1, 1.0, 8)
@@ -118,13 +119,13 @@ def plot_learning_curve(estimator, X_train, y_train, scoring="balanced_accuracy"
     plt.fill_between(sizes, valid_mean-valid_std, valid_mean+valid_std, alpha=0.2)
     plt.xlabel("Training examples")
     plt.ylabel(scoring)
-    plt.title("Learning Curve")
+    plt.title("Learning Curve (MLP)")
     plt.legend()
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
     plt.show()
 
-# ---------- 8) Plot: ROC (2-class only) ----------
+# ---------- 8) Plot: ROC ----------
 def plot_roc(model, X_test, y_test):
     if len(np.unique(y_test)) != 2:
         print("[Info] Dataset is not binary. ROC skipped.")
@@ -139,20 +140,20 @@ def plot_roc(model, X_test, y_test):
     plt.plot([0, 1], [0, 1], linestyle="--")
     plt.xlabel("False Positive Rate")
     plt.ylabel("True Positive Rate")
-    plt.title("ROC Curve (2-class only)")
+    plt.title("ROC Curve (MLP)")
     plt.legend(loc="lower right")
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
     plt.show()
 
-# ===== Data load (same general naming/style as LR) =====
-# Example: Dataset 1 (Students) – change id as needed
-dataset = fetch_ucirepo(id=891)   # 697: Predict Students' Dropout and Academic Success
+# 1) fetch data
+dataset = fetch_ucirepo(id=697)   
+# dataset 1 id=697
+# dataset 2 id=109
 
-# Separate features & target (general)
+# 2) separate features and  targets
 X = dataset.data.features
 y = dataset.data.targets
-# Ensure Series, drop NaN labels (needed before stratified split)
 y = y.squeeze("columns") if hasattr(y, "columns") else pd.Series(y)
 mask = y.notna()
 if mask.sum() < len(y):
@@ -160,27 +161,25 @@ if mask.sum() < len(y):
 X = X.loc[mask].reset_index(drop=True)
 y = y.loc[mask].reset_index(drop=True)
 
-# Encode labels to integers (works for binary or multiclass)
+
 le = LabelEncoder()
 y_enc = le.fit_transform(y)
-
-# Split (stratified, same as LR)
 X_train, X_test, y_train, y_test = train_test_split(
     X, y_enc, test_size=0.2, stratify=y_enc, random_state=42
 )
 
-# Build pipeline, tune, and evaluate
+# 3)construct pipeline and tune parameters
 preprocess, _, _ = make_preprocess(X)
 pipe = make_pipeline(preprocess)
 best_model, grid = tune_with_cv(pipe, X_train, y_train)
 
+# 4) result
 print("\n[GridSearch] Best params:", grid.best_params_)
 print("[GridSearch] Best CV balanced accuracy: {:.3f}".format(grid.best_score_))
 
 y_pred = best_model.predict(X_test)
 print("\nClassification Report (Test):\n", classification_report(y_test, y_pred))
 
-# Plots (same order/behavior as LR)
 plot_confusion_matrix(best_model, X_test, y_test)
 plot_learning_curve(best_model, X_train, y_train)
 plot_roc(best_model, X_test, y_test)
