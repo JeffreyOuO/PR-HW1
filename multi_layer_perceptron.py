@@ -1,14 +1,23 @@
-# ===== mlp_classifier.py =====
+# ===== MLP (same style as LR) =====
 from typing import Tuple, Dict, Any, List
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler, LabelEncoder, label_binarize
 from sklearn.pipeline import Pipeline
 from sklearn.neural_network import MLPClassifier
-from sklearn.model_selection import StratifiedKFold, GridSearchCV
+from sklearn.model_selection import StratifiedKFold, GridSearchCV, learning_curve, train_test_split
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix, ConfusionMatrixDisplay,
+    roc_curve, auc
+)
+from sklearn.base import clone
+from ucimlrepo import fetch_ucirepo
 
-# ---------- 1) preprocess ----------
+# ---------- 1) Preprocess ----------
 def make_preprocess(X: pd.DataFrame) -> Tuple[ColumnTransformer, List[str], List[str]]:
     num_cols = X.select_dtypes(include="number").columns.tolist()
     cat_cols = X.select_dtypes(exclude="number").columns.tolist()
@@ -20,33 +29,29 @@ def make_preprocess(X: pd.DataFrame) -> Tuple[ColumnTransformer, List[str], List
     )
     return preprocess, num_cols, cat_cols
 
-
 # ---------- 2) MLP base ----------
 def make_mlp_base() -> MLPClassifier:
-    # hidden_layer_sizes 可調整；early_stopping=True 可自動提前停止
     return MLPClassifier(
         hidden_layer_sizes=(128, 64),
         activation="relu",
         solver="adam",
-        alpha=1e-4,               # L2 正則
+        alpha=1e-4,             # L2 regularization for MLP
         learning_rate_init=1e-3,
-        max_iter=300,
         batch_size=128,
+        max_iter=300,
         early_stopping=True,
         n_iter_no_change=10,
         random_state=42,
     )
 
-
-# ---------- 3) construct Pipeline ----------
+# ---------- 3) Pipeline ----------
 def make_pipeline(preprocess: ColumnTransformer) -> Pipeline:
     return Pipeline([
         ("prep", preprocess),
         ("clf", make_mlp_base()),
     ])
 
-
-# ---------- 4) grid search parameter ----------
+# ---------- 4) Grid (balanced_accuracy in CV, same spirit as LR) ----------
 def make_param_grid() -> List[Dict[str, Any]]:
     return [
         {
@@ -57,8 +62,7 @@ def make_param_grid() -> List[Dict[str, Any]]:
         }
     ]
 
-
-# ---------- 5) K-fold and GridSearch ----------
+# ---------- 5) Tune with CV ----------
 def tune_with_cv(
     pipeline: Pipeline,
     X_train: pd.DataFrame,
@@ -67,7 +71,7 @@ def tune_with_cv(
     n_splits: int = 5,
     verbose: int = 1,
     n_jobs: int = -1,
-) -> Tuple[Pipeline, GridSearchCV]:
+):
     cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     grid = GridSearchCV(
         estimator=pipeline,
@@ -81,28 +85,91 @@ def tune_with_cv(
     grid.fit(X_train, y_train)
     return grid.best_estimator_, grid
 
+# ---------- 6) Plot: Confusion Matrix ----------
+def plot_confusion_matrix(model, X_test, y_test):
+    y_pred = model.predict(X_test)
+    labels = np.unique(y_test)
+    cm = confusion_matrix(y_test, y_pred, labels=labels)
+    disp = ConfusionMatrixDisplay(cm, display_labels=labels)
+    disp.plot(cmap="Blues", xticks_rotation=45)
+    plt.title("Confusion Matrix")
+    plt.tight_layout()
+    plt.show()
 
+# ---------- 7) Plot: Learning Curve ----------
+def plot_learning_curve(estimator, X_train, y_train, scoring="balanced_accuracy"):
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    train_sizes = np.linspace(0.1, 1.0, 8)
+    est = clone(estimator)
+    sizes, train_scores, valid_scores = learning_curve(
+        estimator=est,
+        X=X_train, y=y_train,
+        cv=cv, scoring=scoring,
+        train_sizes=train_sizes,
+        n_jobs=-1, shuffle=True, random_state=42,
+    )
+    train_mean, train_std = train_scores.mean(axis=1), train_scores.std(axis=1)
+    valid_mean, valid_std = valid_scores.mean(axis=1), valid_scores.std(axis=1)
 
-from ucimlrepo import fetch_ucirepo
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
-import matplotlib.pyplot as plt
+    plt.figure()
+    plt.plot(sizes, train_mean, label="Training score")
+    plt.fill_between(sizes, train_mean-train_std, train_mean+train_std, alpha=0.2)
+    plt.plot(sizes, valid_mean, label="CV score")
+    plt.fill_between(sizes, valid_mean-valid_std, valid_mean+valid_std, alpha=0.2)
+    plt.xlabel("Training examples")
+    plt.ylabel(scoring)
+    plt.title("Learning Curve")
+    plt.legend()
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.tight_layout()
+    plt.show()
 
-# fetch data
-predict_students_dropout_and_academic_success = fetch_ucirepo(id=697)
-X = predict_students_dropout_and_academic_success.data.features
-y = predict_students_dropout_and_academic_success.data.targets.squeeze("columns")
+# ---------- 8) Plot: ROC (2-class only) ----------
+def plot_roc(model, X_test, y_test):
+    if len(np.unique(y_test)) != 2:
+        print("[Info] Dataset is not binary. ROC skipped.")
+        return
+    y_test_bin = label_binarize(y_test, classes=np.unique(y_test)).ravel()
+    y_score = model.predict_proba(X_test)[:, 1]
+    fpr, tpr, _ = roc_curve(y_test_bin, y_score)
+    auc_value = auc(fpr, tpr)
 
-from sklearn.preprocessing import LabelEncoder
+    plt.figure()
+    plt.plot(fpr, tpr, label=f"AUC = {auc_value:.3f}")
+    plt.plot([0, 1], [0, 1], linestyle="--")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC Curve (2-class only)")
+    plt.legend(loc="lower right")
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.tight_layout()
+    plt.show()
 
+# ===== Data load (same general naming/style as LR) =====
+# Example: Dataset 1 (Students) – change id as needed
+dataset = fetch_ucirepo(id=891)   # 697: Predict Students' Dropout and Academic Success
+
+# Separate features & target (general)
+X = dataset.data.features
+y = dataset.data.targets
+# Ensure Series, drop NaN labels (needed before stratified split)
+y = y.squeeze("columns") if hasattr(y, "columns") else pd.Series(y)
+mask = y.notna()
+if mask.sum() < len(y):
+    print(f"[Info] Dropping {len(y) - mask.sum()} rows with NaN labels.")
+X = X.loc[mask].reset_index(drop=True)
+y = y.loc[mask].reset_index(drop=True)
+
+# Encode labels to integers (works for binary or multiclass)
 le = LabelEncoder()
-y_enc = le.fit_transform(y)   # y 是原本的字串 Series
-# 後面都用 y_enc
+y_enc = le.fit_transform(y)
+
+# Split (stratified, same as LR)
 X_train, X_test, y_train, y_test = train_test_split(
     X, y_enc, test_size=0.2, stratify=y_enc, random_state=42
 )
 
-# construct pipeline & tune
+# Build pipeline, tune, and evaluate
 preprocess, _, _ = make_preprocess(X)
 pipe = make_pipeline(preprocess)
 best_model, grid = tune_with_cv(pipe, X_train, y_train)
@@ -110,15 +177,10 @@ best_model, grid = tune_with_cv(pipe, X_train, y_train)
 print("\n[GridSearch] Best params:", grid.best_params_)
 print("[GridSearch] Best CV balanced accuracy: {:.3f}".format(grid.best_score_))
 
-# result
 y_pred = best_model.predict(X_test)
 print("\nClassification Report (Test):\n", classification_report(y_test, y_pred))
 
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-import matplotlib.pyplot as plt
-
-cm = confusion_matrix(y_test, y_pred, labels=np.arange(len(le.classes_)))
-ConfusionMatrixDisplay(cm, display_labels=le.classes_).plot(cmap="Blues", xticks_rotation=45)
-plt.title("Confusion Matrix (Best MLP on Test)")
-plt.tight_layout()
-plt.show()
+# Plots (same order/behavior as LR)
+plot_confusion_matrix(best_model, X_test, y_test)
+plot_learning_curve(best_model, X_train, y_train)
+plot_roc(best_model, X_test, y_test)
