@@ -25,7 +25,7 @@ def make_preprocess(X: pd.DataFrame) -> Tuple[ColumnTransformer, List[str], List
 def make_mlp_base() -> MLPClassifier:
     # hidden_layer_sizes 可調整；early_stopping=True 可自動提前停止
     return MLPClassifier(
-        hidden_layer_sizes=(128, 64),
+        hidden_layer_sizes=(256,128, 64),
         activation="relu",
         solver="adam",
         alpha=1e-4,               # L2 正則

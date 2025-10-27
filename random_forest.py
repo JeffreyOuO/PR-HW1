@@ -72,7 +72,7 @@ def tune_with_cv(
 from ucimlrepo import fetch_ucirepo
 
 # fetch data（同原檔）
-predict_students_dropout_and_academic_success = fetch_ucirepo(id=697)
+predict_students_dropout_and_academic_success = fetch_ucirepo(id=848)
 
 # separate features and targets（同原檔）
 X = predict_students_dropout_and_academic_success.data.features
