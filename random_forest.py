@@ -141,10 +141,11 @@ def plot_roc_if_binary(model, X_test, y_test):
     plt.show()
 
 # 1) fetch data
-dataset = fetch_ucirepo(id=697)  # Predict Students' Dropout and Academic Success
+dataset = fetch_ucirepo(id=891)  # Predict Students' Dropout and Academic Success
 # dataset 1 id=697
-
-
+# dataset 2 id=109
+# dataset 3 id=848
+# dataset 4 id=891
 # 2) separate features and  targets
 X = dataset.data.features
 y = dataset.data.targets

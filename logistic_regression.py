@@ -159,10 +159,11 @@ def plot_roc(model, X_test, y_test):
 from ucimlrepo import fetch_ucirepo
 
 # 1) fetch data
-dataset = fetch_ucirepo(id=697)
+dataset = fetch_ucirepo(id=891)
 # dataset 1 id=697
 # dataset 2 id=109
-
+# dataset 3 id=848
+# dataset 4 id=891
 # 2) separate features and  targets
 X = dataset.data.features
 y = dataset.data.targets

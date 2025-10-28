@@ -58,8 +58,8 @@ def make_param_grid() -> List[Dict[str, Any]]:
             "clf__hidden_layer_sizes": [(64,), (128, 64)],
             "clf__activation": ["relu", "tanh"],
             "clf__alpha": [1e-5, 1e-4, 1e-3],
-            "clf__learning_rate_init": [ 1e-3],
-            "clf__batch_size": [64, 128],
+            "clf__learning_rate_init": [ 1e-5, 1e-4, 1e-3],
+            "clf__batch_size": [32,64, 128],
         }
     ]
 
@@ -147,10 +147,11 @@ def plot_roc(model, X_test, y_test):
     plt.show()
 
 # 1) fetch data
-dataset = fetch_ucirepo(id=697)   
+dataset = fetch_ucirepo(id=891)   
 # dataset 1 id=697
 # dataset 2 id=109
-
+# dataset 3 id=848
+# dataset 4 id=891
 # 2) separate features and  targets
 X = dataset.data.features
 y = dataset.data.targets
